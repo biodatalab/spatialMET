@@ -41,7 +41,7 @@ dashboardPage(
                   textInput(inputId="collapse_par",
                             label="Size of neighborhood to collapse (optional)",
                             placeholder=NULL,
-                            value=NULL,
+                            value="",
                             width='150px'),
                   fileInput("img_user_file", "Upload a tissue image (optional)",
                             multiple=FALSE,

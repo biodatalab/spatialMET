@@ -70,19 +70,20 @@ shinyServer(function(input, output, session){
   ## So, find neighborhoods to collapse data
   pixel_collapse = reactive({
     req(valid_hcdist_file())
+    coords_df = pixel_clusters()
     min_nb = input$collapse_par
-    if(nrow(pixel_clusters()) >= 200000){
-cat(nrow(pixel_clusters()))
+
+    if(nrow(coords_df) >= 200000){
       min_nb = 9
     }
+
     nbs_ls = NULL
-    if(!is.null(min_nb)){
+    if(min_nb != ""){
       cat('COLLAPSING PIXELS\n')
       withProgress(message="Collapsing pixels to reduce memory usage...", value=0, {
-        coords_df = pixel_clusters()
-        coords_df = coords_df[, 1:3]
+        coords_df = coords_df[, c('pixel_id', 'x_coord', 'y_coord')]
+assign('coords_df', coords_df, envir = .GlobalEnv)
         nbs_ls = find_adj_neighbors(coords_df=coords_df)
-        #min_nb = 1
       })
     }
 
@@ -92,7 +93,7 @@ cat(nrow(pixel_clusters()))
   neighbors = reactiveVal()
   observe({
     neighbors = pixel_collapse()
-assign('nbs_ls', nbs_ls, envir = .GlobalEnv)
+assign('neighbors', neighbors, envir = .GlobalEnv)
   })
 
   # Load intensity matrix file from user
