@@ -6,7 +6,7 @@
 # Allow large file upload
 options(shiny.maxRequestSize=10000*1024^2)
 
-# ===================== UI =======================
+# =================================== UI =======================================
 
 dashboardPage(
   dashboardHeader(title="spatialMET"),
@@ -38,6 +38,11 @@ dashboardPage(
                   fileInput("itx_user_file", "Upload a intensity table file",
                             multiple=FALSE,
                             accept=".tsv"),
+                  textInput(inputId="collapse_par",
+                            label="Size of neighborhood to collapse (optional)",
+                            placeholder=NULL,
+                            value=NULL,
+                            width='150px'),
                   fileInput("img_user_file", "Upload a tissue image (optional)",
                             multiple=FALSE,
                             accept="image/*")

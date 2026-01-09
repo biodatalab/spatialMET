@@ -5,50 +5,94 @@
 # Allow large file upload
 options(shiny.maxRequestSize=10000*1024^2)
 
-# ===================== Server ================================
+# ================================= Server =====================================
 shinyServer(function(input, output, session){
 
   # Load hcdist input file from user
-  hcdist_res = reactive({
+  hcdist_res = eventReactive(input$hcdist_user_file, {
     req(valid_hcdist_file())
     infile = input$hcdist_user_file
 
     # Read cluster file
-    pixel_clusters = data.table::fread(infile$datapath, check.names=FALSE, data.table=FALSE, colClasses=list(character=c("cluster")))
+    cat('READING CLUSTER TABLE\n')
+    pixel_clusters = data.table::fread(infile$datapath,
+                                       check.names=FALSE, data.table=FALSE,
+                                       colClasses=list(character=c("cluster")))
+
+    # Define column names expected if hcdist clusters were input
+    hcdist_headers = c("Pixel", "X", "Y", "tree order", "cluster", "cluster_size", "color")
 
     # Check if file contains hcdist's headers. If not process as generic
-    hcdist_headers = c("Pixel", "X", "Y", "tree order", "cluster", "cluster_size", "color") # X and Y coordinates need to be integers (geom_tile)!!!
+    ## X and Y coordinates need to be integers (geom_tile)!!!
     if(sum(colnames(pixel_clusters) %in% hcdist_headers) != 7){
       pixel_clusters = pixel_clusters[, c(1:4)]
-      colnames(pixel_clusters) = c("Pixel", "X", "Y", "cluster")
+      colnames(pixel_clusters) = c("pixel_id", "x_coord", "y_coord", "hc_orig")
 
-      # Create color palette
+      # Create color palette and add to dataframe
       set.seed(12345)
-      col_pal = sample(khroma::color("smoothrainbow", force=TRUE)(length(unique(pixel_clusters[['cluster']]))))
-      col_pal = data.frame(cluster=unique(pixel_clusters[['cluster']]), color=col_pal)
+      col_pal = sample(khroma::color("smoothrainbow", force=TRUE)(length(unique(pixel_clusters[['hc_orig']]))))
+      col_pal = data.frame(cluster=unique(pixel_clusters[['hc_orig']]), color=col_pal)
+      pixel_clusters = pixel_clusters %>% dplyr::left_join(., col_pal, by='hc_orig')
 
-      pixel_clusters = pixel_clusters %>% dplyr::left_join(., col_pal, by='cluster')
+    } else if(sum(colnames(pixel_clusters) %in% hcdist_headers) == 7){
+      # Rename columns if resulting from hcdist
+      pixel_clusters = pixel_clusters %>%
+        dplyr::select(c("pixel_id"="Pixel",
+                        'x_coord'="X", 'y_coord'="Y",
+                        'hc_orig'="cluster", "color"))
     }
 
-    # Force clusters as character
-    pixel_clusters[['cluster']] = as.character(pixel_clusters[['cluster']])
+    # Force clusters as character and coordinates as integers
+    pixel_clusters[['hc_orig']] = as.character(pixel_clusters[['hc_orig']])
+    pixel_clusters[['x_coord']] = as.integer(pixel_clusters[['x_coord']])
+    pixel_clusters[['y_coord']] = as.integer(pixel_clusters[['y_coord']])
+
+    # Add columns for manual ROI annotations
+    pixel_clusters[['hc_manual']] = pixel_clusters[['hc_orig']]
+    pixel_clusters[['mz_manual']] = rep('Default', nrow(pixel_clusters))
 
     # Sort coordinates to help in pixel/neighborhoods collapsing
-    pixel_clusters = pixel_clusters %>% dplyr::arrange(X, Y)
+    # Add row IDs for manual ROI selection
+    pixel_clusters = pixel_clusters %>%
+      dplyr::arrange(x_coord, y_coord) %>%
+      tibble::add_column(row_id=as.integer(c(1:nrow(.))), .before=1)
 
     return(pixel_clusters)
   })
 
-  # Prepare table that will contain manual annotations
-  manualout_res = reactive({
-    df_tmp = reactiveValues(id=c(1:nrow(hcdist_res())),
-                            pixel_id=hcdist_res()[['Pixel']],
-                            x_coord=hcdist_res()[['X']],
-                            y_coord=hcdist_res()[['Y']],
-                            hc_orig=hcdist_res()[['cluster']],
-                            hc_manual=hcdist_res()[['cluster']],
-                            mz_manual=rep('Default', nrow(hcdist_res())))
-    return(df_tmp)
+  # Prepare reactive value to store data frame with HCDIST and manual annotations
+  pixel_clusters = reactiveVal()
+  observe({
+    pixel_clusters(hcdist_res())
+  })
+
+  # If too many pixels, distance matrix eats all memory.
+  ## So, find neighborhoods to collapse data
+  pixel_collapse = reactive({
+    req(valid_hcdist_file())
+    min_nb = input$collapse_par
+    if(nrow(pixel_clusters()) >= 200000){
+cat(nrow(pixel_clusters()))
+      min_nb = 9
+    }
+    nbs_ls = NULL
+    if(!is.null(min_nb)){
+      cat('COLLAPSING PIXELS\n')
+      withProgress(message="Collapsing pixels to reduce memory usage...", value=0, {
+        coords_df = pixel_clusters()
+        coords_df = coords_df[, 1:3]
+        nbs_ls = find_adj_neighbors(coords_df=coords_df)
+        #min_nb = 1
+      })
+    }
+
+    return(nbs_ls)
+  })
+
+  neighbors = reactiveVal()
+  observe({
+    neighbors = pixel_collapse()
+assign('nbs_ls', nbs_ls, envir = .GlobalEnv)
   })
 
   # Load intensity matrix file from user
@@ -60,7 +104,8 @@ shinyServer(function(input, output, session){
       if(is.null(infile)){
         intx = NULL
       } else{
-        intx = vroom::vroom(infile$datapath, guess_max=10)
+        cat('READING INTENSITY TABLE\n')
+        intx = vroom::vroom(infile$datapath, guess_max=10, show_col_types=FALSE)
         intx = tibble::column_to_rownames(.data=intx, var=colnames(intx)[1])
         # Convert the data frame to a DelayedArray object
         intx = DelayedArray::DelayedArray(as.matrix(intx))
@@ -87,7 +132,8 @@ shinyServer(function(input, output, session){
   # Element providing the list of clusters to select cluster 1 for DA
   observe({
     if(input_validate()){
-      cluster_opts = unique(manualout_res()[[input$annotation_test]])
+      cluster_opts = hcdist_res()
+      cluster_opts = unique(cluster_opts[[input$annotation_test]])
       updateSelectizeInput(session, 'group1_selected', choices=cluster_opts, server=T, selected=cluster_opts[1])
     }
   })
@@ -95,7 +141,8 @@ shinyServer(function(input, output, session){
   # Element providing the list of clusters to select cluster 2 for DA
   observe({
     if(input_validate()){
-      cluster_opts = unique(manualout_res()[[input$annotation_test]])
+      cluster_opts = hcdist_res()
+      cluster_opts = unique(cluster_opts[[input$annotation_test]])
       updateSelectizeInput(session, 'group2_selected', choices=cluster_opts, server=T, selected=cluster_opts[2])
     }
   })
@@ -103,7 +150,8 @@ shinyServer(function(input, output, session){
   # Element providing the list of reference clusters to spatial gradients
   observe({
     if(input_validate()){
-      cluster_opts = unique(manualout_res()[[input$annotation_test_gradients]])
+      cluster_opts = hcdist_res()
+      cluster_opts = unique(cluster_opts[[input$annotation_test_gradients]])
       updateSelectizeInput(session, 'ref_group', choices=cluster_opts, server=T, selected=cluster_opts[3])
     }
   })
@@ -112,10 +160,11 @@ shinyServer(function(input, output, session){
   ############################### SPATIAL DOMAINS ##############################
   # Generate plot showing clusters/domains
   base_hc_plot = reactive({
-    dat_tmp = hcdist_res()
+    dat_tmp = pixel_clusters()
+    labs = dat_tmp[['hc_manual']]
     alpha_val = as.numeric(input$alpha_value_hc)
     hc_p = make_plot_hcdist(pixel_cl=dat_tmp,
-                            labels=manualout_res()[['hc_manual']],
+                            labels=labs,
                             spot_alpha=alpha_val)
 
     return(hc_p)
@@ -125,7 +174,8 @@ shinyServer(function(input, output, session){
   output$hc_plot = ggiraph::renderGirafe({
     withProgress(message="Updating plot...", value=0, {
       x_ggr = ggiraph::girafe(ggobj=base_hc_plot(),
-                              width_svg=12, height_svg=12)
+                              width_svg=12, height_svg=12,
+                              ggiraph::opts_selection(type='single'))
 
       x_ggr = ggiraph::girafe_options(x_ggr, ggiraph::opts_zoom(max=5),
                                       ggiraph::opts_selection(type="multiple",
@@ -168,8 +218,8 @@ shinyServer(function(input, output, session){
       paste0("manual_annotations_", Sys.Date(), ".csv")
     },
     content = function(file){
-      df_tmp = manualout_res()
-      df_tmp = data.frame(id=df_tmp[['id']],
+      df_tmp = pixel_clusters()
+      df_tmp = data.frame(id=df_tmp[['pixel_id']],
                           x_coord=df_tmp[['x_coord']],
                           y_coord=df_tmp[['y_coord']],
                           manual_from_hcdist=df_tmp[['hc_manual']],
@@ -183,21 +233,23 @@ shinyServer(function(input, output, session){
   ################################# INTENSITIES ################################
   # Generate plot of mz values
   base_mz_plot = reactive({
-    dat_tmp = hcdist_res()[, c('Pixel', 'X', 'Y')]
+    # Feature to plot
     mz_val = input$mz_selected
-    alpha_val = as.numeric(input$alpha_value_mz)
+    # Prepare data frame
     mtx_tmp = as.data.frame(t(itx_res()[mz_val, , drop=FALSE]))
-    mtx_tmp[['Pixel']] = rownames(mtx_tmp)
-    rownames(mtx_tmp) = NULL
-    colnames(mtx_tmp)[1] = 'mz_intx'
-    mz_p = NULL
-    if(any(colnames(mtx_tmp) == 'Pixel')){ # To avoid [object Object] message while loading plot
-      mtx_tmp = mtx_tmp %>% dplyr::left_join(dat_tmp, ., by='Pixel')
-      mz_p = make_plot_mz(mz_dat=mtx_tmp,
-                          labels=manualout_res()[['mz_manual']],
-                          mz_val=mz_val,
-                          spot_alpha=alpha_val)
-    }
+    colnames(mtx_tmp) = 'mz_intx'
+    mtx_tmp[['pixel_id']] = rownames(mtx_tmp)
+
+    dat_tmp = pixel_clusters()
+    labs = dat_tmp[['mz_manual']]
+    alpha_val = as.numeric(input$alpha_value_mz)
+
+    mtx_tmp = mtx_tmp %>% dplyr::left_join(dat_tmp, ., by='pixel_id')
+    mz_p = make_plot_mz(mz_dat=mtx_tmp,
+                        labels=labs,
+                        mz_val=mz_val,
+                        spot_alpha=alpha_val)
+
     return(mz_p)
   })
 
@@ -205,7 +257,8 @@ shinyServer(function(input, output, session){
   output$mz_plot = ggiraph::renderGirafe({
       withProgress(message="Updating plot...", value=0, {
         x_ggr = ggiraph::girafe(ggobj=base_mz_plot(),
-                                width_svg=12, height_svg=12)
+                                width_svg=12, height_svg=12,
+                                ggiraph::opts_selection(type='single'))
 
         x_ggr = ggiraph::girafe_options(x_ggr, ggiraph::opts_zoom(max=5),
                                         ggiraph::opts_selection(type="multiple",
@@ -248,8 +301,8 @@ shinyServer(function(input, output, session){
       paste0("manual_annotations_", Sys.Date(), ".csv")
     },
     content = function(file){
-      df_tmp = manualout_res()
-      df_tmp = data.frame(id=df_tmp[['id']],
+      df_tmp = pixel_clusters()
+      df_tmp = data.frame(id=df_tmp[['pixel_id']],
                           x_coord=df_tmp[['x_coord']],
                           y_coord=df_tmp[['y_coord']],
                           manual_from_hcdist=df_tmp[['hc_manual']],
@@ -411,27 +464,37 @@ shinyServer(function(input, output, session){
 
 
   ################################# BUTTONS ####################################
+  # Declare reactive value to store manual ROI annotations
+  # manual_annots = reactiveVal(NULL)
+  # observe({
+  #   manual_annots = reactiveVal(hcdist_res())
+  # })
+
   # Button to confirm manual annotation on hcdist image
   observeEvent(input$label_confirm_hc, {
-    mann = manualout_res()
-
+    updated_ann = pixel_clusters()
     if(input$label_input_numerichc != ""){
-      cat('LABEL SELECTION\n\n')
+      cat('LABEL SELECTION - DOMAINS\n')
       user_hc_input = gsub(" ", '', input$label_input_numerichc)
       user_hc_input = unique(unlist(str_split(user_hc_input, ',')))
-      ids.selected = mann[['id']][mann[['hc_manual']] %in% user_hc_input]
+      rows_selected = updated_ann[['row_id']][updated_ann[['hc_manual']] %in% user_hc_input]
     } else{
-      cat('LASSO SELECTION\n\n')
-      ids.selected <- mann[['id']][as.integer(input$hc_plot_selected)]
+      cat('LASSO SELECTION - DOMAINS\n')
+      rows_selected = updated_ann[['row_id']][as.integer(input$hc_plot_selected)]
     }
-    mann[['hc_manual']][which(mann[['id']] %in% ids.selected)] = input$label_input_hc
+    updated_ann[['hc_manual']][updated_ann[['row_id']] %in% rows_selected] = input$label_input_hc
+
+    pixel_clusters(updated_ann)
   })
 
   # Button to confirm manual annotation on m/z image
   observeEvent(input$label_confirm_mz, {
-    mann = manualout_res()
-    ids.selected <- as.numeric(input$mz_plot_selected)
-    mann[['mz_manual']][which(mann[['id']] %in% ids.selected)] = input$label_input_mz
+    updated_ann = pixel_clusters()
+    cat('LASSO SELECTION - INTENSITIES\n')
+    rows_selected = updated_ann[['row_id']][as.integer(input$mz_plot_selected)]
+    updated_ann[['mz_manual']][updated_ann[['row_id']] %in% rows_selected] = input$label_input_mz
+
+    pixel_clusters(updated_ann)
   })
 
   # Button to run spatial statistics

@@ -12,7 +12,7 @@ output:
 
 ### How to use this module
 
-Assignment of each pixel to a spatial domain is shown here. The domains showed here constitute the base for downstream analyses, including the 
+Assignment of each pixel to a spatial domain is shown here. The domains showed here constitute the base for downstream analyses, including the **Differential abundance** and **Spatial gradient tests** modules.
 
 ### Instructions to create a manual annotation (ROI):
 1. After loading the files, go to "Spatial domains" or "Intensities" section

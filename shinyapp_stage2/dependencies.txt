@@ -1,0 +1,10 @@
+DT
+ggiraph
+ggnewscale
+khroma
+knitr
+markdown
+shiny
+shinydashboard
+shinyvalidate
+tidyverse
