@@ -71,22 +71,26 @@ shinyServer(function(input, output, session){
   pixel_collapse = reactive({
     req(valid_hcdist_file())
     coords_df = pixel_clusters()
-    min_nb = input$collapse_par
 
-    if(nrow(coords_df) >= 200000){
-      min_nb = 9
+    min_nb = as.integer(input$collapse_par)
+    if(nrow(coords_df) >= 50000 | !is.integer(min_nb) | length(min_nb) == 0){
+      min_nb = 21
     }
-
+assign('min_nb', min_nb, envir = .GlobalEnv)
+assign('coords_df', coords_df, envir = .GlobalEnv)
     nbs_ls = NULL
     if(min_nb != ""){
       cat('COLLAPSING PIXELS\n')
       withProgress(message="Collapsing pixels to reduce memory usage...", value=0, {
         coords_df = coords_df[, c('pixel_id', 'x_coord', 'y_coord')]
-assign('coords_df', coords_df, envir = .GlobalEnv)
         nbs_ls = find_adj_neighbors(coords_df=coords_df)
+        collapse_itx = itx_res()
+        collapse_itx = lapply(nbs_ls, function(i){
+          itx_tmp = apply(collapse_itx[, i, drop=FALSE], 1, median)
+        })
       })
     }
-
+ assign('nbs_ls', nbs_ls, envir = .GlobalEnv)
     return(nbs_ls)
   })
 
