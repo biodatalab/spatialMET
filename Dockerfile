@@ -31,7 +31,7 @@ RUN R -e "install.packages(c('httpuv', 'shiny', 'shinyDashboardThemeDIY', 'dashb
 	'sf', 'spdep', 'sfsmisc'))"
 
 # Copy the app files to the container
-COPY ./app ./app
+cp ./app ./app
 
 WORKDIR /app
 
