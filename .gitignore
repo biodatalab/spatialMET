@@ -1,4 +1,7 @@
 .Rproj.user
 .Rhistory
+shinyapp_stage2/.Rapp.history
 .RData
 .Ruserdata
+.positai
+.gitignore

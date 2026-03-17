@@ -60,6 +60,10 @@ gene_moran_i_notest = function(x=NULL, listw=NULL){
     # Extract expression data for a given gene.
     itx_tmp = as.vector(x[j, ])
 
+#assign('itx_tmp', itx_tmp, envir = .GlobalEnv)
+#assign('listw', listw, envir = .GlobalEnv)
+#assign('j', j, envir = .GlobalEnv)
+
     # Estimate statistic.
     stat_est = spdep::moran(x=itx_tmp,
                             listw=listw,

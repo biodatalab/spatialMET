@@ -54,54 +54,15 @@ shinyServer(function(input, output, session){
     # Sort coordinates to help in pixel/neighborhoods collapsing
     # Add row IDs for manual ROI selection
     pixel_clusters = pixel_clusters %>%
-      dplyr::arrange(x_coord, y_coord) %>%
+      #dplyr::arrange(x_coord, y_coord) %>%
       tibble::add_column(row_id=as.integer(c(1:nrow(.))), .before=1)
 
     return(pixel_clusters)
   })
 
-  # Prepare reactive value to store data frame with HCDIST and manual annotations
-  pixel_clusters = reactiveVal()
-  observe({
-    pixel_clusters(hcdist_res())
-  })
-
-  # If too many pixels, distance matrix eats all memory.
-  ## So, find neighborhoods to collapse data
-  pixel_collapse = reactive({
-    req(valid_hcdist_file())
-    coords_df = pixel_clusters()
-
-    min_nb = as.integer(input$collapse_par)
-    if(nrow(coords_df) >= 50000 | !is.integer(min_nb) | length(min_nb) == 0){
-      min_nb = 21
-    }
-assign('min_nb', min_nb, envir = .GlobalEnv)
-assign('coords_df', coords_df, envir = .GlobalEnv)
-    nbs_ls = NULL
-    if(min_nb != ""){
-      cat('COLLAPSING PIXELS\n')
-      withProgress(message="Collapsing pixels to reduce memory usage...", value=0, {
-        coords_df = coords_df[, c('pixel_id', 'x_coord', 'y_coord')]
-        nbs_ls = find_adj_neighbors(coords_df=coords_df)
-        collapse_itx = itx_res()
-        collapse_itx = lapply(nbs_ls, function(i){
-          itx_tmp = apply(collapse_itx[, i, drop=FALSE], 1, median)
-        })
-      })
-    }
- assign('nbs_ls', nbs_ls, envir = .GlobalEnv)
-    return(nbs_ls)
-  })
-
-  neighbors = reactiveVal()
-  observe({
-    neighbors = pixel_collapse()
-assign('neighbors', neighbors, envir = .GlobalEnv)
-  })
-
   # Load intensity matrix file from user
-  itx_res = reactive({
+  #itx_res = reactive({
+  itx_in = eventReactive(input$itx_user_file, {
     req(valid_itx_file())
 
     withProgress(message="Reading intensity data...", value=0, {
@@ -120,9 +81,86 @@ assign('neighbors', neighbors, envir = .GlobalEnv)
     return(intx)
   })
 
+  # Prepare reactive value to store data frame with HCDIST and manual annotations
+  pixel_clusters = reactiveVal()
+  observe({
+    pixel_clusters(hcdist_res())
+  })
+
+  # Prepare reactive value to store data intensity matrix
+  itx_res = reactiveVal()
+  observe({
+    itx_res(itx_in())
+  })
+
+  # Store collapsed pixel neighborhoods
+  neighbors = reactiveVal(NULL)
+
+  # If too many pixels, distance matrix eats all memory.
+  ## So, find neighborhoods to collapse data
+#  pixel_collapse = reactive({
+  observeEvent(list(input$hcdist_user_file, input$itx_user_file, input$collapse_par), {
+    #req(valid_hcdist_file())
+    req(input$hcdist_user_file, input$itx_user_file, valid_hcdist_file())
+
+    min_nb = as.integer(input$collapse_par)
+    hc_out = pixel_clusters()
+    coords_df = hc_out[, c('pixel_id', 'x_coord', 'y_coord')]
+
+    # Decide whether collapsing is needed but not requested
+    systematic_sub = TRUE ## HARD CODED TO PERFORM SYSTEMATIC SUBSAMPLING (PICK A PIXEL EVERY X PIXELS)
+    if(nrow(coords_df) >= 20e6 | !is.integer(min_nb) | length(min_nb) == 0){
+      min_nb = 21
+    } else if(systematic_sub){
+      min_nb = NA_integer_
+    }
+
+    nbs_ls = NULL
+    if(!is.na(min_nb)){
+      cat('COLLAPSING PIXELS\n')
+      withProgress(message=paste0("Collapsing pixels to reduce memory usage (", min_nb*min_nb, " neighbors)"), value=0, {
+        nbs_ls = find_adj_neighbors(coords_df=coords_df, n=min_nb)
+
+        cat('SUMMARIZE ABUNDANCES\n')
+        itx_mtx = itx_in()
+
+        collapse_itx = lapply(nbs_ls, function(i){
+          itx_tmp = DelayedMatrixStats::rowMedians(itx_mtx[, i, drop=FALSE])
+          itx_tmp = as.matrix(itx_tmp)
+          return(itx_tmp)
+        }) %>% do.call('cbind', .)
+        colnames(collapse_itx) = names(nbs_ls)
+
+        cat('SUMMARIZE PIXEL LABELS\n')
+        collapse_labs = lapply(nbs_ls, function(i){
+          lab_tmp = get_most_common_category(i, hc_out)
+          lab_tmp = as.data.frame(lab_tmp)
+          return(lab_tmp)
+        }) %>% do.call('rbind', .) %>% rownames_to_column('pixel_id') %>% dplyr::rename(pixel_id=1, hc_orig=2)
+      })
+      neighbors(list(nbs_ls, collapse_itx, collapse_labs)) # Update neighbors reactive
+    } else if(systematic_sub){
+      cat('COLLAPSING PIXELS - SYSTEMATIC\n')
+      pixel_clusters(hc_out[seq(1, nrow(hc_out), by=10), ])
+
+      cat('SUMMARIZE ABUNDANCES - SYSTEMATIC\n')
+      itx_mtx = itx_in()
+      itx_res(itx_mtx[, hc_out[['pixel_id']]])
+      neighbors(list(nbs_ls, NULL, NULL))
+    } else {
+      neighbors(list(nbs_ls, NULL, NULL))
+    }
+  }, ignoreInit=TRUE)
+
   # Extract top variable metabolites
   top_var = reactive({
-    itx_tmp = itx_res()
+    cat('IDENTIFYING MOST VARIABLE FEATURES\n')
+    nbs_ls = neighbors()
+    if(is.null(nbs_ls[[1]])){
+      itx_tmp = itx_res()
+    } else{
+      itx_tmp = nbs_ls[[2]]
+    }
     if(!is.null(itx_tmp)){ # To avoid error when loading selectizeInput before data (at app start)
       var_mz = sort(apply(itx_tmp, 1, sd), decreasing=T)
       return(names(var_mz))
@@ -136,8 +174,14 @@ assign('neighbors', neighbors, envir = .GlobalEnv)
 
   # Element providing the list of clusters to select cluster 1 for DA
   observe({
+    cat('EXTRACT LIST OF LABELS FOR USER SELECTION (GRP 1)\n')
+    nbs_ls = neighbors()
     if(input_validate()){
-      cluster_opts = hcdist_res()
+      if(is.null(nbs_ls[[1]])){
+        cluster_opts = hcdist_res()
+      } else{
+        cluster_opts = nbs_ls[[3]] %>% left_join(., pixel_clusters() %>% dplyr::select(-c('hc_orig')), by='pixel_id')
+      }
       cluster_opts = unique(cluster_opts[[input$annotation_test]])
       updateSelectizeInput(session, 'group1_selected', choices=cluster_opts, server=T, selected=cluster_opts[1])
     }
@@ -145,8 +189,14 @@ assign('neighbors', neighbors, envir = .GlobalEnv)
 
   # Element providing the list of clusters to select cluster 2 for DA
   observe({
+    cat('EXTRACT LIST OF LABELS FOR USER SELECTION (GRP 2)\n')
+    nbs_ls = neighbors()
     if(input_validate()){
-      cluster_opts = hcdist_res()
+      if(is.null(nbs_ls[[1]])){
+        cluster_opts = hcdist_res()
+      } else{
+        cluster_opts = nbs_ls[[3]] %>% left_join(., pixel_clusters() %>% dplyr::select(-c('hc_orig')), by='pixel_id')
+      }
       cluster_opts = unique(cluster_opts[[input$annotation_test]])
       updateSelectizeInput(session, 'group2_selected', choices=cluster_opts, server=T, selected=cluster_opts[2])
     }
@@ -154,8 +204,14 @@ assign('neighbors', neighbors, envir = .GlobalEnv)
 
   # Element providing the list of reference clusters to spatial gradients
   observe({
+    cat('EXTRACT LIST OF LABELS FOR USER SELECTION (GRADIENTS 2)\n')
+    nbs_ls = neighbors()
     if(input_validate()){
-      cluster_opts = hcdist_res()
+      if(is.null(nbs_ls[[1]])){
+        cluster_opts = hcdist_res()
+      } else {
+        cluster_opts = nbs_ls[[3]] %>% left_join(., pixel_clusters() %>% dplyr::select(-c('hc_orig')), by='pixel_id')
+      }
       cluster_opts = unique(cluster_opts[[input$annotation_test_gradients]])
       updateSelectizeInput(session, 'ref_group', choices=cluster_opts, server=T, selected=cluster_opts[3])
     }
@@ -165,7 +221,15 @@ assign('neighbors', neighbors, envir = .GlobalEnv)
   ############################### SPATIAL DOMAINS ##############################
   # Generate plot showing clusters/domains
   base_hc_plot = reactive({
-    dat_tmp = pixel_clusters()
+    nbs_ls = neighbors()
+    if(is.null(nbs_ls[[1]])){
+#      dat_tmp = pixel_clusters()
+      dat_tmp = hcdist_res() # TO USE ORIGINAL HCDIST RESULT WHILE USING SYSTEMATIC SAMPLE FOR STATISTICS
+    } else{
+      dat_tmp2 = pixel_clusters()
+      dat_tmp = nbs_ls[[3]] %>% dplyr::left_join(., dat_tmp2 %>% dplyr::select(-c('hc_orig')), by='pixel_id')
+    }
+
     labs = dat_tmp[['hc_manual']]
     alpha_val = as.numeric(input$alpha_value_hc)
     hc_p = make_plot_hcdist(pixel_cl=dat_tmp,
@@ -241,11 +305,13 @@ assign('neighbors', neighbors, envir = .GlobalEnv)
     # Feature to plot
     mz_val = input$mz_selected
     # Prepare data frame
-    mtx_tmp = as.data.frame(t(itx_res()[mz_val, , drop=FALSE]))
+    #mtx_tmp = as.data.frame(t(itx_res()[mz_val, , drop=FALSE]))
+    mtx_tmp = as.data.frame(t(itx_in()[mz_val, , drop=FALSE])) # TO USE ORIGINAL HCDIST RESULT WHILE USING SYSTEMATIC SAMPLE FOR STATISTICS
     colnames(mtx_tmp) = 'mz_intx'
     mtx_tmp[['pixel_id']] = rownames(mtx_tmp)
 
-    dat_tmp = pixel_clusters()
+    #dat_tmp = pixel_clusters()
+    dat_tmp = hcdist_res() # TO USE ORIGINAL HCDIST RESULT WHILE USING SYSTEMATIC SAMPLE FOR STATISTICS
     labs = dat_tmp[['mz_manual']]
     alpha_val = as.numeric(input$alpha_value_mz)
 
@@ -324,8 +390,8 @@ assign('neighbors', neighbors, envir = .GlobalEnv)
     itx_thr = as.numeric(input$user_itx_thr)
 
     # Subset annotations to user-selected
-    df_tmp = data.frame(pixel_id=manualout_res()[['pixel_id']],
-                        annots=manualout_res()[[input$annotation_test]])
+    df_tmp = data.frame(pixel_id=pixel_clusters()[['pixel_id']],
+                        annots=pixel_clusters()[[input$annotation_test]])
     df_tmp = df_tmp[df_tmp[[2]] %in% c(input$group1_selected, input$group2_selected), ]
     df_tmp[[2]] = as.character(df_tmp[[2]])
 
@@ -378,18 +444,21 @@ assign('neighbors', neighbors, envir = .GlobalEnv)
     top_features = top_var()[1:top_features]
 
     # Extract cooordinates
-    df_tmp = data.frame(pixel_id=manualout_res()[['pixel_id']],
-                        x_coord=manualout_res()[['x_coord']],
-                        y_coord=manualout_res()[['y_coord']])
+    df_tmp = data.frame(pixel_id=pixel_clusters()[['pixel_id']],
+                        x_coord=pixel_clusters()[['x_coord']],
+                        y_coord=pixel_clusters()[['y_coord']])
 
     # Subset intensity matrix to top variable features
-    itx_tmp = itx_res()[top_features, ]
-
+    itx_tmp = itx_res()[top_features, df_tmp[['pixel_id']] ]
+#assign('itx_tmp', itx_tmp, envir = .GlobalEnv)
+#assign('df_tmp', df_tmp, envir = .GlobalEnv)
     withProgress(message="Calculating spatial weights...", value=0, {
       # If too many pixels, distance matrix eats all memory. So, use KNN method instead
       k=NULL
       if(nrow(df_tmp) >= 45000){
         k = 8
+      } else{
+        k = 4
       }
       spw = calculate_spatial_weights(coords=df_tmp, k=k)
 
@@ -420,24 +489,24 @@ assign('neighbors', neighbors, envir = .GlobalEnv)
     top_features = top_var()[1:top_features]
 
     # Extract coordinates and annotations
-    df_tmp = data.frame(pixel_id=manualout_res()[['pixel_id']],
-                        x_coord=manualout_res()[['x_coord']],
-                        y_coord=manualout_res()[['y_coord']],
-                        annots=manualout_res()[[input$annotation_test_gradients]])
+    df_tmp = data.frame(pixel_id=pixel_clusters()[['pixel_id']],
+                        x_coord=pixel_clusters()[['x_coord']],
+                        y_coord=pixel_clusters()[['y_coord']],
+                        annots=pixel_clusters()[[input$annotation_test_gradients]])
     df_tmp[[4]] = as.character(df_tmp[[4]])
 
     # Subset intensity matrix to top variable features
-    itx_tmp = itx_res()[top_features, ]
+    itx_tmp = itx_res()[top_features, df_tmp[['pixel_id']] ]
 
     # If too many pixels, distance matrix eats all memory. So, find neighborhoods to collapse data
-    nbs_ls = NULL
+    # nbs_ls = NULL
     min_nb = 9
-    if(nrow(df_tmp) >= 45000){
-      withProgress(message="Identifying pixel neighborhoods...", value=0, {
-        nbs_ls = find_adj_neighbors(coords_df=df_tmp[, 1:3])
-      })
-      min_nb = 1
-    }
+    # if(nrow(df_tmp) >= 45000){
+    #   withProgress(message="Identifying pixel neighborhoods...", value=0, {
+    #     nbs_ls = find_adj_neighbors(coords_df=df_tmp[, 1:3])
+    #   })
+    #   min_nb = 1
+    # }
 
     # Perform spatial gradients tests
     spg_tests_df = data.frame(metabolite=NA, cluster=NA, avg_log_itx1=NA, avg_log_itx2=NA,
@@ -446,10 +515,11 @@ assign('neighbors', neighbors, envir = .GlobalEnv)
                                     sp_df=df_tmp[, 1:3],
                                     ref=df_tmp[['pixel_id']][ df_tmp[[4]] == input$ref_group ],
                                     distsumm=input$summ_type,
-                                    nbs_ls=nbs_ls,
+                                    #nbs_ls=nbs_ls,
+                                    nbs_ls=NULL,
                                     min_nb=min_nb,
                                     log_dist=T)
-
+assign('spg_tests_df', spg_tests_df, envir= .GlobalEnv)
     return(spg_tests_df)
   })
 

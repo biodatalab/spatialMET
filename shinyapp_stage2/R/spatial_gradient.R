@@ -54,7 +54,7 @@ spatial_gradient = function(x=NULL, sp_df=NULL, ref=NULL, exclude=NULL,
   if(!is.null(nbs_ls)){
     coords_tmp = coords_tmp[ coords_tmp[[1]] %in% names(nbs_ls), ]
   }
-  sp_df = NULL # Clean env
+  rm(sp_df) # Clean env
 
   # Calculate distance matrix
   rownames(coords_tmp) = coords_tmp[[1]]
@@ -73,15 +73,17 @@ spatial_gradient = function(x=NULL, sp_df=NULL, ref=NULL, exclude=NULL,
   # Identify spots to be removed from reference if not enough neighbors
   # Get minimum distance among all spots within a sample (for Visium would be approximately the same for any sample)
   min_sample = min(as.data.frame(dist_tmp[lower.tri(dist_tmp)]))
+assign('min_sample', min_sample, envir = .GlobalEnv)
   # Get distances among reference spots
-  dists_ref_tmp = dist_tmp[ref_tmp, ref_tmp, drop=F]
-#assign('dists_ref_tmp', dists_ref_tmp, envir = .GlobalEnv)
+  dists_ref_tmp = dist_tmp[ref_tmp, ref_tmp, drop=FALSE]
+assign('dists_ref_tmp', dists_ref_tmp, envir = .GlobalEnv)
   # Get number of neighbors within minimum distance
   # NOTE: When dealing with other technologies like SMI, will need to be more flexible with
   # minimum distances as not an array of equally distant spots. In this case, allowed a "buffer"
   # of a quarter of the minimum distance
-  nbs = colSums(dists_ref_tmp >= min_sample * nb_dist_thr[1] & dists_ref_tmp <= min_sample * nb_dist_thr[2])
-
+  #nbs = colSums(dists_ref_tmp >= (min_sample * nb_dist_thr[1]) & dists_ref_tmp <= (min_sample * nb_dist_thr[2]) )
+  nbs = colSums(dists_ref_tmp >= (min_sample * nb_dist_thr[1]) & dists_ref_tmp <= quantile(dists_ref_tmp, 0.2) )
+assign('nbs', nbs, envir = .GlobalEnv)
   if(sum(nbs >= min_nb) < 1){ # At least 1 cluster of spots to continue with analysis
     nbs_keep = c()
   } else{
@@ -144,7 +146,7 @@ spatial_gradient = function(x=NULL, sp_df=NULL, ref=NULL, exclude=NULL,
       })
       raw_cts = do.call(cbind, raw_cts)
     } else{
-      raw_cts = x[, nonref_tmp]
+      raw_cts = x[, nonref_tmp, drop=FALSE]
     }
 
     # Get spots that have at least 1 distance value
