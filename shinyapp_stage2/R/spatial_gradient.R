@@ -73,17 +73,17 @@ spatial_gradient = function(x=NULL, sp_df=NULL, ref=NULL, exclude=NULL,
   # Identify spots to be removed from reference if not enough neighbors
   # Get minimum distance among all spots within a sample (for Visium would be approximately the same for any sample)
   min_sample = min(as.data.frame(dist_tmp[lower.tri(dist_tmp)]))
-assign('min_sample', min_sample, envir = .GlobalEnv)
+#assign('min_sample', min_sample, envir = .GlobalEnv)
   # Get distances among reference spots
   dists_ref_tmp = dist_tmp[ref_tmp, ref_tmp, drop=FALSE]
-assign('dists_ref_tmp', dists_ref_tmp, envir = .GlobalEnv)
+#assign('dists_ref_tmp', dists_ref_tmp, envir = .GlobalEnv)
   # Get number of neighbors within minimum distance
   # NOTE: When dealing with other technologies like SMI, will need to be more flexible with
   # minimum distances as not an array of equally distant spots. In this case, allowed a "buffer"
   # of a quarter of the minimum distance
   #nbs = colSums(dists_ref_tmp >= (min_sample * nb_dist_thr[1]) & dists_ref_tmp <= (min_sample * nb_dist_thr[2]) )
   nbs = colSums(dists_ref_tmp >= (min_sample * nb_dist_thr[1]) & dists_ref_tmp <= quantile(dists_ref_tmp, 0.2) )
-assign('nbs', nbs, envir = .GlobalEnv)
+#assign('nbs', nbs, envir = .GlobalEnv)
   if(sum(nbs >= min_nb) < 1){ # At least 1 cluster of spots to continue with analysis
     nbs_keep = c()
   } else{
@@ -249,6 +249,8 @@ assign('nbs', nbs, envir = .GlobalEnv)
               if(log_dist){
                 df_mol_range[['dist2ref']] = log(df_mol_range[['dist2ref']] + 1e-200)
               }
+
+#if(m == 'mz_279.2223'){assign('df_mol_range', df_mol_range, envir= .GlobalEnv)}
 
               # Run robust linear model and get summary
               lm_tmp = MASS::rlm(df_mol_range[[m]] ~ df_mol_range[['dist2ref']], maxit=100)

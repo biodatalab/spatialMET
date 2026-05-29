@@ -519,7 +519,7 @@ shinyServer(function(input, output, session){
                                     nbs_ls=NULL,
                                     min_nb=min_nb,
                                     log_dist=T)
-assign('spg_tests_df', spg_tests_df, envir= .GlobalEnv)
+#assign('spg_tests_df', spg_tests_df, envir= .GlobalEnv)
     return(spg_tests_df)
   })
 
