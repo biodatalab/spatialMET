@@ -1,0 +1,130 @@
+FROM rocker/r-ver:4.6.1
+
+# ----------------------------------------------------------------------
+# System dependencies
+# ----------------------------------------------------------------------
+RUN apt-get update -qq && apt-get -y --no-install-recommends install \
+    libcurl4-openssl-dev libxml2-dev libssl-dev libuv1-dev \
+    ca-certificates curl wget zstd gcc g++ make cmake pkg-config \
+    libfontconfig1-dev libfreetype6-dev libcairo2-dev libharfbuzz-dev \
+    libfribidi-dev libtiff5-dev libglib2.0-dev libgdal-dev \
+    libudunits2-dev libproj-dev libgeos-dev libfftw3-dev libabsl-dev \
+libgsl-dev \
+    && apt-get install -y --reinstall ca-certificates openssl \
+    && update-ca-certificates --fresh \
+    && rm -rf /var/lib/apt/lists/*
+
+# ----------------------------------------------------------------------
+# Application directories and files
+# ----------------------------------------------------------------------
+RUN mkdir -p /app
+COPY shinyapp_stage2 /app
+COPY hcdist_stage1 /hcdist_stage1
+
+# ----------------------------------------------------------------------
+# Build hcdist and maldi_image_from_clusters from source
+# ----------------------------------------------------------------------
+WORKDIR /hcdist_stage1/hcdist
+
+# Compile hcdist
+RUN gcc -O2 -std=gnu99 -march=x86-64 -o hcdist hcdist.c text.c tree.c rand_xoshiro256.c -lm -lpthread
+
+# Compile maldi_image_from_clusters (depends on hcdist.h)
+RUN gcc -O2 -std=gnu99 -march=x86-64 -o maldi_image_from_clusters maldi_image_from_clusters.c -lm
+
+# Make sure they are executable and in PATH
+RUN chmod +x hcdist maldi_image_from_clusters
+ENV PATH="/hcdist_stage1/hcdist:${PATH}"
+
+# Return to app directory
+WORKDIR /app
+
+RUN chmod +x /hcdist_stage1/bash_scripts/*.sh \
+    && chmod +x /hcdist_stage1/hcdist/hcdist \
+    && chmod +x /hcdist_stage1/hcdist/maldi_image_from_clusters
+
+# ----------------------------------------------------------------------
+# R global options (repos, download method, insecure flags)
+# ----------------------------------------------------------------------
+RUN echo 'options(\
+  repos = c(CRAN = "https://cloud.r-project.org"),\
+  download.file.method = "curl",\
+  timeout = 1800,\
+  download.file.extra = c("-L", "--insecure", "--ssl-no-revoke")\
+)' >> /usr/local/lib/R/etc/Rprofile.site
+
+ENV BIOCONDUCTOR_ONLINE_VERSION_DIAGNOSIS=FALSE
+
+# ======================================================================
+# STEP 1: Bioconductor (manual repos with `devel`)
+# ======================================================================
+
+# ----------------------------------------------------------------------
+# 1a. Install using devel repos (this will work with R 4.6.1)
+# ----------------------------------------------------------------------
+RUN Rscript -e "Sys.setenv(BIOCONDUCTOR_ONLINE_VERSION_DIAGNOSIS='FALSE'); \
+  options(repos = c(CRAN = 'https://cloud.r-project.org', \
+                    BioCsoft = 'https://bioconductor.org/packages/devel/bioc', \
+                    BioCann = 'https://bioconductor.org/packages/devel/data/annotation', \
+                    BioCexp = 'https://bioconductor.org/packages/devel/data/experiment', \
+                    BioCworkflows = 'https://bioconductor.org/packages/devel/workflows')); \
+  install.packages(c('S4Vectors','BiocGenerics','BiocParallel','DelayedArray','SummarizedExperiment','ProtGenerics','limma','Cardinal'), dependencies=TRUE, quiet=FALSE)"
+
+# ----------------------------------------------------------------------
+# 1b. Verify and re-install any missing packages (still using devel repos)
+# ----------------------------------------------------------------------
+RUN Rscript -e " \
+  packages <- c('S4Vectors','BiocGenerics','BiocParallel','DelayedArray', \
+                'SummarizedExperiment','ProtGenerics','limma','Cardinal'); \
+  missing <- packages[!sapply(packages, requireNamespace, quietly=TRUE)]; \
+  if (length(missing) > 0) { \
+    cat('Missing Bioconductor packages:', paste(missing, collapse=', '), '\n'); \
+    cat('Re-installing missing packages from devel repos...\n'); \
+    options(repos = c(CRAN = 'https://cloud.r-project.org', \
+                      BioCsoft = 'https://bioconductor.org/packages/devel/bioc', \
+                      BioCann = 'https://bioconductor.org/packages/devel/data/annotation', \
+                      BioCexp = 'https://bioconductor.org/packages/devel/data/experiment', \
+                      BioCworkflows = 'https://bioconductor.org/packages/devel/workflows')); \
+    install.packages(missing, dependencies=TRUE, quiet=FALSE); \
+  } else { \
+    cat('All Bioconductor packages already installed.\n'); \
+  }"
+
+# ----------------------------------------------------------------------
+# 1c. Final verification – fail if still missing
+# ----------------------------------------------------------------------
+RUN Rscript -e " \
+  packages <- c('S4Vectors','BiocGenerics','BiocParallel','DelayedArray', \
+                'SummarizedExperiment','ProtGenerics','limma','Cardinal'); \
+  missing <- packages[!sapply(packages, requireNamespace, quietly=TRUE)]; \
+  if (length(missing) > 0) { \
+    cat('FATAL: Still missing Bioconductor packages:', paste(missing, collapse=', '), '\n'); \
+    quit(status=1); \
+  } else { \
+    cat('All Bioconductor packages are present.\n'); \
+  }"
+
+# ======================================================================
+# STEP 2: CRAN packages (only runs if Bioconductor passes)
+# ======================================================================
+RUN Rscript -e "install.packages(c('shiny','httpuv','fs','cpp11','dashboardthemes','shinydashboard','shinyvalidate','DT','ggiraph','plotly','colourpicker','shinyjs','htmlwidgets','progress','sf','dplyr','ggplot2','tibble','purrr','stringr','tidyr','forcats','readr','markdown','ggnewscale','khroma','units','spdep','sfsmisc','vroom','fastcluster','future','promises','processx','data.table','magrittr','Matrix','uwot','WGCNA','irlba','visNetwork','igraph','spatstat.geom','spatstat.explore','tidyverse','ggrepel','matrixStats','mxfda','parallelly'), dependencies=TRUE, quiet=TRUE)"
+
+# ----------------------------------------------------------------------
+# NEW: Explicit WGCNA install with BioC deps and verbose output
+# ----------------------------------------------------------------------
+RUN Rscript -e "options(repos = c(CRAN = 'https://cloud.r-project.org', \
+                                   BioCsoft = 'https://bioconductor.org/packages/devel/bioc')); \
+                install.packages(c('impute','preprocessCore','WGCNA'), \
+                                 dependencies=TRUE, quiet=FALSE)"
+
+# ----------------------------------------------------------------------
+# Optional verification of all installed packages
+# ----------------------------------------------------------------------
+RUN Rscript -e "cat('Installed packages:\n'); print(sort(installed.packages()[,'Package']))"
+
+# ----------------------------------------------------------------------
+# Set core count and start Shiny
+# ----------------------------------------------------------------------
+ENV R_MAX_NUM_CORES=4
+EXPOSE 3838
+CMD ["R", "-e", "library(parallelly); library(parallel); shiny::runApp('/app', host = '0.0.0.0', port = 3838)"]
