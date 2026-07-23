@@ -311,13 +311,3 @@ The Shiny app provides a user-friendly interface that supports:
 
 All results can be exported for further analysis or publication, making spatialMET a complete solution for spatial metabolomics research.
 ```
-
----
-
-This version now clearly distinguishes between:
-
-- Using the **official pre‑built image** (`oscareospina/spatialmet_app`) – the quickest route.
-- **Building locally** from source.
-- **Pushing your own image** to Docker Hub for sharing or reuse.
-
-You can copy this entire markdown block directly into your `README.md` file.
