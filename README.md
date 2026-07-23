@@ -88,7 +88,7 @@ These formatted datasets are required inputs for the spatialMET application.
 
 #### Uploading Pre-processed Data
 
-If you already have generated the required cluster and intensity files, you can upload them directly through the **"Upload preprocessed data"** tab. The red arrows in Figure 1 indicate where to upload the cluster file (left) and the intensity file (right).
+If you already have generated the required cluster and intensity files, you can upload them directly through the **"Upload preprocessed data"** tab. The red arrows in Figure 1 indicate where to upload the cluster file (first arrow),  the intensity file (second arrow), and optionally the H$E image (third arrow).
 
 <img src="Figure_1.png" alt="Upload pre-processed data interface" width="100%"/>
 
@@ -145,7 +145,7 @@ After the data is loaded, the sidebar analysis menu appears on the left side of 
 
 <img src="Figure_5.png" alt="Full analysis interface" width="100%"/>
 
-**Figure 5:** The spatialMET Shiny app interface showing the expanded sidebar with all analysis modules available after data loading. The red arrow highlights the expanded menu with access to Spatial Visualization, Univariate Analysis, Spatial Statistics & Gradients, Differential Abundance, and Network & Enrichment tools.
+**Figure 5:** The spatialMET Shiny app interface showing the expanded sidebar with all analysis modules available after data loading. This highlights the expanded menu with access to Spatial Visualization, Univariate Analysis, Spatial Statistics & Gradients, Differential Abundance, and Network & Enrichment tools.
 
 ---
 
@@ -158,10 +158,6 @@ The hcdist algorithm offers:
 - **Computational efficiency** – optimized for large MSI datasets with thousands of pixels
 - **Scalable performance** – maintains speed with increasing pixel counts
 - **Optimal memory management** – handles large matrices through efficient data structures
-
-<img src="Figure_6.png" alt="Spatial domains visualization" width="100%"/>
-
-**Figure 6:** Results of spatial domain detection using the hcdist hierarchical clustering algorithm. Each color represents a distinct tissue region identified by molecular expression patterns.
 
 ---
 
@@ -177,10 +173,6 @@ The app provides interactive visualization of spatial domains and individual met
 - **Visualize metabolite intensities** – display spatial distribution of any detected metabolite
 - **Annotate regions of interest** – manually select and label specific tissue regions
 - **Overlay reference images** – superimpose tissue images for anatomical context
-
-<img src="Figure_7.png" alt="Intensity visualization" width="100%"/>
-
-**Figure 7:** Spatial visualization of a metabolite intensity across the tissue section. The color gradient represents relative abundance, with red indicating higher expression and blue indicating lower expression.
 
 ---
 
@@ -251,13 +243,41 @@ chmod +x hcdist_stage1/bash_scripts/*.sh
 ---
 
 ### `dos2unix: command not found`
+**For advanced users / HPC environments**
+The repository includes a standalone script `run_pipeline.sh` that can be used to run the entire 
+preprocessing pipeline **outside** the Shiny app – for example, on a high‑performance computing (HPC)
+cluster or when processing very large datasets that may exceed the memory limits of a Docker container.
 
-The script `run_pipeline.sh` may attempt to run `dos2unix` to clean line endings.  
-If the utility is missing, either:
+This script attempts to run `dos2unix` at the start to ensure all bash scripts have Unix line endings (LF).  
+If `dos2unix` is not available on your system, you will see an error like:
 
-- Install it via your package manager (`brew install dos2unix` on macOS, `apt-get install dos2unix` on Linux).
-- Comment out the line in `run_pipeline.sh` that calls `find ... -exec dos2unix {} +` – this is safe on Unix systems.
+```
+find: dos2unix: No such file or directory
+```
 
+To resolve this, you have two options:
+
+1. **Install `dos2unix`** using your package manager:
+   - macOS: `brew install dos2unix`
+   - Linux (Debian/Ubuntu): `sudo apt-get install dos2unix`
+   - Linux (RHEL/CentOS): `sudo yum install dos2unix`
+   - On HPC clusters, you may need to load a module: `module load dos2unix` (if available).
+
+2. **Comment out the line** that calls `dos2unix` – this is safe on any Unix‑like system (macOS, Linux, WSL) where the scripts already have correct line endings.  
+   In `run_pipeline.sh`, locate the line:
+
+   ```bash
+   find "$SCRIPT_DIR" -name "go_*.sh" -exec dos2unix {} +
+   ```
+
+   and change it to:
+
+   ```bash
+   # find "$SCRIPT_DIR" -name "go_*.sh" -exec dos2unix {} +
+   ```
+
+This will allow the script to proceed without the utility. The same fix applies whether you are running the pipeline on your local machine or in a cluster environment.
+```
 ---
 
 ### Segmentation faults or buffer overflow
@@ -299,7 +319,8 @@ For persistent issues, please open an issue on the [GitHub repository](https://g
 
 ## Summary
 
-The spatialMET pipeline offers an integrated solution for spatial metabolomics analysis, combining efficient data preprocessing with advanced clustering algorithms and interactive visualization tools. By following the three-step workflow—data preprocessing, spatial domain detection, and exploratory analysis—researchers can efficiently identify and characterize molecular patterns in tissue samples, enabling deeper insights into spatial biology and metabolomics.
+The spatialMET pipeline offers an integrated solution for spatial metabolomics analysis, combining efficient data preprocessing with advanced clustering algorithms and interactive visualization tools. 
+By following the three-step workflow—data preprocessing, spatial domain detection, and exploratory analysis—researchers can efficiently identify and characterize molecular patterns in tissue samples, enabling deeper insights into spatial biology and metabolomics.
 
 The Shiny app provides a user-friendly interface that supports:
 
