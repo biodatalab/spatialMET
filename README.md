@@ -1,4 +1,4 @@
-```markdown
+
 # spatialMET
 
 A comprehensive pipeline for domain detection and annotation of spatial metabolomics data using hierarchical clustering with Shiny app integration for interactive exploration.
@@ -310,4 +310,4 @@ The Shiny app provides a user-friendly interface that supports:
 - **Interactive annotation** – manual ROI selection and labeling for targeted analysis
 
 All results can be exported for further analysis or publication, making spatialMET a complete solution for spatial metabolomics research.
-```
+
