@@ -1,47 +1,73 @@
-
+```markdown
 # spatialMET
 
 A comprehensive pipeline for domain detection and annotation of spatial metabolomics data using hierarchical clustering with Shiny app integration for interactive exploration.
 
 ---
 
-## Quick Start: Using the spatialMET Shiny App via Docker
+## Quick Start: Using the Pre‑built Docker Image
 
-The spatialMET Shiny application is available as a pre-built Docker container hosted on Docker Hub. To run it:
+The spatialMET Shiny application is available as a pre‑built Docker container on Docker Hub.  
+To run it:
 
 1. Ensure Docker Desktop is installed on your computer.
-2. Launch the application using the command-line interface:
+2. Launch the application with:
 
 ```bash
-docker run --rm -p 3838:3838 oscareospina/spatialmet_app
+docker run --rm -p 3838:3838 yonatan2627/spatialmet_app:latest
 ```
 
-3. Access the application by opening a web browser and navigating to:  
-   [http://localhost:3838](http://localhost:3838)
+3. Open your browser and go to: [http://localhost:3838](http://localhost:3838)
 
 ---
 
 ## Building the spatialMET Shiny App from Source
 
-To build the spatialMET Shiny application from the source code in this repository:
+If you prefer to build the container yourself or customise the code:
 
-1. Clone and prepare the repository:
-   - Download and extract this repository
-   - Navigate to the repository folder using your command-line interface
-2. Build the Docker container:
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/biodatalab/spatialMET.git
+cd spatialMET
+```
+
+### 2. Build the Docker image
 
 ```bash
 docker build --no-cache -t spatialmet_app .
 ```
 
-3. Run the container:
+### 3. Run your local build
 
 ```bash
 docker run --rm -p 3838:3838 spatialmet_app
 ```
 
-4. Access the application at:  
-   [http://localhost:3838](http://localhost:3838)
+Access the app at [http://localhost:3838](http://localhost:3838).
+
+---
+
+### (Optional) Push Your Own Image to Docker Hub
+
+If you want to share your built image (or use it on multiple machines), you can push it to Docker Hub:
+
+```bash
+# Tag with your Docker Hub username and repository name
+docker tag spatialmet_app your-username/spatialmet_app:latest
+
+# Log in to Docker Hub
+docker login
+
+# Push the image
+docker push your-username/spatialmet_app:latest
+```
+
+Now anyone can run your image with:
+
+```bash
+docker run --rm -p 3838:3838 your-username/spatialmet_app:latest
+```
 
 ---
 
@@ -58,15 +84,68 @@ The resulting data formats include:
 
 These formatted datasets are required inputs for the spatialMET application.
 
-*Data preprocessing workflow converting raw MSI files to analysis-ready formats*
+---
 
-**Figure 1:** Overview of the data input and preprocessing workflow, showing conversion from raw instrument files to analysis-ready formats.
+#### Uploading Pre-processed Data
 
-**File Organization:** After processing raw data and generating the required output files, transfer these processed files to the directories indicated by the red arrows in Figure 2. This organization step ensures that the downstream analysis pipeline can properly access and utilize the formatted data for spatial domain detection and visualization.
+If you already have generated the required cluster and intensity files, you can upload them directly through the **"Upload preprocessed data"** tab. The red arrows in Figure 1 indicate where to upload the cluster file (left) and the intensity file (right).
 
-*File organization and transfer workflow showing target directories for processed data*
+<img src="Figure_1.png" alt="Upload pre-processed data interface" width="100%"/>
 
-**Figure 2:** Workflow diagram illustrating file transfer locations. Red arrows indicate target directories where processed files should be placed to enable subsequent analysis steps.
+**Figure 1:** The file upload interface for pre-processed cluster and intensity data. Red arrows indicate the file input fields for uploading the two required data files.
+
+---
+
+#### Preprocessing Raw Data
+
+If you have raw `.ibd` and `.imzML` files, you can upload them through the **"Preprocess raw data"** tab as shown in Figure 2.
+
+<img src="Figure_2.png" alt="Raw data preprocessing interface" width="100%"/>
+
+**Figure 2:** The raw data preprocessing interface showing where to upload `.ibd` and `.imzML` files. The first red arrow indicates the file upload field, and the second red arrow shows the "Run Preprocessing" button that initiates the pipeline.
+
+Once the upload is complete, you can initiate the preprocessing pipeline by clicking the **"Run Preprocessing"** button. The pipeline will process your raw data through the following stages:
+
+1. **Cardinal extraction** – reads the `.imzML`/`.ibd` files and extracts peak intensities
+2. **Data filtering** – removes low-intensity noise and filters features based on statistical thresholds
+3. **Feature clustering** – builds a hierarchical tree of metabolites based on spatial co-expression patterns
+4. **Pixel clustering** – detects spatial domains by clustering pixels with similar molecular profiles
+
+---
+
+#### Successful Preprocessing
+
+Upon successful completion of the preprocessing pipeline, a preview of the generated data will appear as shown in Figure 3. At this stage, the data is ready for downstream analysis.
+
+<img src="Figure_3.png" alt="Preprocessing completion and data preview" width="100%"/>
+
+**Figure 3:** The preprocessing completion interface showing the status message, data preview table, and action buttons. The data is now ready for download or direct loading into the app.
+
+From this interface, you can:
+
+- **Download the cluster file** (`.txt`) – contains pixel coordinates and cluster assignments
+- **Download the intensity table** (`.tsv`) – contains metabolite intensities for each pixel
+- **Load generated data into app** – directly imports the data into the Shiny app for downstream analysis (red arrow in Figure 4)
+
+---
+
+#### Loading Data into the App
+
+Once preprocessing is complete, click the **"Load generated data into app"** button (red arrow in Figure 4) to import the data directly into the Shiny app for downstream analysis.
+
+<img src="Figure_4.png" alt="Loading generated data into the app" width="100%"/>
+
+**Figure 4:** The interface after successful preprocessing showing the "Load generated data into app" button (red arrow). Clicking this button imports the data directly into the app without requiring manual download and upload.
+
+---
+
+#### Downstream Analysis Interface
+
+After the data is loaded, the sidebar analysis menu appears on the left side of the app, providing access to all analysis modules as shown in Figure 5.
+
+<img src="Figure_5.png" alt="Full analysis interface" width="100%"/>
+
+**Figure 5:** The spatialMET Shiny app interface showing the expanded sidebar with all analysis modules available after data loading. The red arrow highlights the expanded menu with access to Spatial Visualization, Univariate Analysis, Spatial Statistics & Gradients, Differential Abundance, and Network & Enrichment tools.
 
 ---
 
@@ -76,13 +155,13 @@ Spatial domains are detected using hierarchical clustering implemented through a
 
 The hcdist algorithm offers:
 
-- Computational efficiency for large MSI datasets
-- Scalable performance with increasing pixel counts
-- Optimal memory management for spatial clustering tasks
+- **Computational efficiency** – optimized for large MSI datasets with thousands of pixels
+- **Scalable performance** – maintains speed with increasing pixel counts
+- **Optimal memory management** – handles large matrices through efficient data structures
 
-*Visualization of detected spatial domains using hierarchical clustering with hcdist algorithm*
+<img src="Figure_6.png" alt="Spatial domains visualization" width="100%"/>
 
-**Figure 3:** Results of spatial domain detection using the hcdist hierarchical clustering algorithm, showing distinct tissue regions identified by molecular expression patterns.
+**Figure 6:** Results of spatial domain detection using the hcdist hierarchical clustering algorithm. Each color represents a distinct tissue region identified by molecular expression patterns.
 
 ---
 
@@ -90,20 +169,50 @@ The hcdist algorithm offers:
 
 The spatialMET Shiny application provides comprehensive tools for downstream analysis and interactive exploration:
 
-**Statistical Analyses:**
+#### Spatial Visualization
 
-- Differential abundance testing to identify significant molecular differences between detected spatial domains
-- Spatial autocorrelation statistics (Moran's I and Geary's C) for detecting statistically significant expression "hotspots"
+The app provides interactive visualization of spatial domains and individual metabolite intensities. Users can:
 
-**Interactive Features:**
+- **Visualize spatial domains** – view detected tissue regions with customizable color palettes
+- **Visualize metabolite intensities** – display spatial distribution of any detected metabolite
+- **Annotate regions of interest** – manually select and label specific tissue regions
+- **Overlay reference images** – superimpose tissue images for anatomical context
 
-- Manual selection and annotation of regions of interest (ROIs) for targeted investigation of specific tissue areas
-- Dynamic visualization of clustering results and statistical outputs
-- Export capabilities for analysis results and annotated regions
+<img src="Figure_7.png" alt="Intensity visualization" width="100%"/>
 
-*Interactive analysis interface showing differential abundance results, spatial statistics, and ROI annotation tools*
+**Figure 7:** Spatial visualization of a metabolite intensity across the tissue section. The color gradient represents relative abundance, with red indicating higher expression and blue indicating lower expression.
 
-**Figure 4:** The spatialMET Shiny application interface displaying differential abundance testing results, spatial autocorrelation statistics (Moran's I and Geary's C), and region of interest (ROI) annotation capabilities for comprehensive exploratory data analysis.
+---
+
+#### Statistical Analyses
+
+The app includes several statistical modules for downstream analysis:
+
+- **Differential Abundance Testing** – identifies significant molecular differences between spatial domains using multiple statistical methods (Wilcoxon, T-test, Hellinger distance, and spatial limma)
+
+- **Spatial Statistics** – calculates Moran's I and Geary's C to detect spatial autocorrelation and identify expression "hotspots"
+
+- **Spatial Gradient Testing** – detects metabolites that show systematic spatial gradients away from reference domains
+
+- **FPCA (Functional PCA)** – performs functional principal component analysis on spatial G-functions to compare spatial patterns across domains
+
+---
+
+#### Univariate Analysis
+
+The univariate analysis module provides tools for exploring individual metabolite patterns:
+
+- **Violin plots** – compare intensity distributions across domains
+- **Principal Component Analysis (PCA)** – visualize global data structure and domain separation
+- **Scatter plots** – explore relationships between pairs of metabolites
+- **UMAP** – non-linear dimensionality reduction for visualizing data structure
+
+---
+
+#### Network & Enrichment Analysis
+
+- **Metabolite Network** – builds correlation networks to identify co-expressed metabolite modules
+- **Metabolite Occurrence** – identifies domain-enriched metabolites through statistical testing
 
 ---
 
@@ -192,4 +301,23 @@ For persistent issues, please open an issue on the [GitHub repository](https://g
 
 The spatialMET pipeline offers an integrated solution for spatial metabolomics analysis, combining efficient data preprocessing with advanced clustering algorithms and interactive visualization tools. By following the three-step workflow—data preprocessing, spatial domain detection, and exploratory analysis—researchers can efficiently identify and characterize molecular patterns in tissue samples, enabling deeper insights into spatial biology and metabolomics.
 
+The Shiny app provides a user-friendly interface that supports:
 
+- **Two data input pathways** – direct upload of pre-processed files or raw data preprocessing
+- **Comprehensive visualization** – spatial domains, metabolite intensities, and multivariate analyses
+- **Statistical testing** – differential abundance, spatial statistics, and gradient detection
+- **Network analysis** – metabolite co-expression networks and domain-enrichment testing
+- **Interactive annotation** – manual ROI selection and labeling for targeted analysis
+
+All results can be exported for further analysis or publication, making spatialMET a complete solution for spatial metabolomics research.
+```
+
+---
+
+This version now clearly distinguishes between:
+
+- Using the **official pre‑built image** (`oscareospina/spatialmet_app`) – the quickest route.
+- **Building locally** from source.
+- **Pushing your own image** to Docker Hub for sharing or reuse.
+
+You can copy this entire markdown block directly into your `README.md` file.
