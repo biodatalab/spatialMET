@@ -243,7 +243,9 @@ chmod +x hcdist_stage1/bash_scripts/*.sh
 ---
 
 ### `dos2unix: command not found`
+
 **For advanced users / HPC environments**
+
 The repository includes a standalone script `run_pipeline.sh` that can be used to run the entire 
 preprocessing pipeline **outside** the Shiny app – for example, on a high‑performance computing (HPC)
 cluster or when processing very large datasets that may exceed the memory limits of a Docker container.
