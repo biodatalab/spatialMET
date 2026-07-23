@@ -68,7 +68,16 @@ Now anyone can run your image with:
 ```bash
 docker run --rm -p 3838:3838 your-username/spatialmet_app:latest
 ```
+## Dependencies
 
+For **local (non‑Docker) installation**, the `dependencies.txt` file lists all required R packages, including both CRAN and Bioconductor dependencies.  
+If you are running the Shiny app directly from R (outside the Docker container), you must install these packages before launching the app.
+
+# Install CRAN packages
+install.packages(c("shiny", "shinydashboard", "shinyvalidate", ...))
+
+# Install Bioconductor packages
+BiocManager::install(c("S4Vectors", "BiocGenerics", "limma", ...))
 ---
 
 ## The spatialMET Pipeline: A Three-Step Workflow

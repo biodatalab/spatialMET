@@ -1,10 +1,23 @@
-DT
-ggiraph
-ggnewscale
-khroma
-knitr
-markdown
-shiny
-shinydashboard
-shinyvalidate
-tidyverse
+# =============================================================================
+# Dependencies for spatialMET Shiny app
+# =============================================================================
+## CRAN packages
+install.packages(c(
+  "shiny","shinydashboard","shinyvalidate","shinyjs","plotly","colourpicker",
+  "DT","ggiraph","ggplot2","ggrepel","ggnewscale","khroma",
+  "dplyr","tidyr","purrr","tibble","stringr","forcats","readr",
+  "data.table","vroom","Matrix","magrittr","fastcluster","future",
+  "promises","parallelly","uwot","irlba","visNetwork","igraph",
+  "spdep","sfsmisc","matrixStats","tidyverse","markdown","sf","units",
+  "spatstat.geom","spatstat.explore","spatstat.data","spatstat.univar",
+  "spatstat.random","nlme"
+))
+
+# Bioconductor packages
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+BiocManager::install(c(
+  "S4Vectors","BiocGenerics","BiocParallel","DelayedArray",
+  "DelayedMatrixStats","MatrixGenerics","IRanges","SummarizedExperiment",
+  "ProtGenerics","limma","Cardinal","mxfda","WGCNA","impute","preprocessCore"
+))
