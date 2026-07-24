@@ -104,12 +104,19 @@ These formatted datasets are required inputs for the spatialMET application.
 
 #### Uploading Pre-processed Data
 
-If you already have generated the required cluster and intensity files, you can upload them directly through the **"Upload preprocessed data"** tab. The red arrows in Figure 1 indicate where to upload the cluster file (first arrow),  the intensity file (second arrow), and optionally the H$E image (third arrow).
+If you have already generated the required cluster and intensity files (e.g., using the standalone `run_pipeline.sh` script or from a previous analysis), you can upload them directly through the **"Upload preprocessed data"** tab. 
+
+The interface, shown in Figure 1, provides three file input fields:
+
+- **First arrow (red):** Upload the cluster file (`.txt`) – this contains pixel coordinates, cluster assignments, and colour mappings.
+- **Second arrow (red):** Upload the intensity table (`.tsv`) – this contains metabolite peak intensities for each pixel.
+- **Third arrow (red, optional):** Upload a tissue image (e.g., H&E stain) for anatomical reference and overlay.
+
+For demonstration purposes, raw example data (`.imzML` and `.ibd` files) are available on Zenodo at [https://doi.org/10.5281/zenodo.21536923](https://doi.org/10.5281/zenodo.21536923). You can use these raw files with the preprocessing pipeline (described in the next section) to generate the cluster and intensity files needed for this upload step. Alternatively, if you already have pre-processed files from your own data, you can upload them directly here.
 
 <img src="Figure_1.png" alt="Upload pre-processed data interface" width="100%"/>
 
-**Figure 1:** The file upload interface for pre-processed cluster and intensity data. Red arrows indicate the file input fields for uploading the two required data files.
-
+**Figure 1:** The file upload interface for pre-processed cluster and intensity data. Red arrows indicate the file input fields for uploading the cluster file (left), the intensity file (centre), and the optional tissue image (right).
 ---
 
 #### Preprocessing Raw Data
