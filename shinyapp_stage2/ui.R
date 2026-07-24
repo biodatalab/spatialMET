@@ -77,7 +77,7 @@ dashboardPage(
                 ),
                 box(
                     width = 3,
-                    fileInput("hcdist_user_file", "Upload a hcdist result file",
+                    fileInput("hcdist_user_file", "Upload preprocessed data",
                               multiple = FALSE, accept = ".txt"),
                     fileInput("itx_user_file", "Upload a intensity table file",
                               multiple = FALSE, accept = ".tsv"),
